@@ -44,6 +44,24 @@ try:
 except Exception:
     joblib = None
 
+# -----------------------------
+# Data schema (required columns)
+# -----------------------------
+REQUIRED_COLS = [
+    "event_id",
+    "timestamp",
+    "gas",
+    "Q_m3s",
+    "V_m3",
+    "duct_length_m",
+    "duct_diameter_m",
+    "aux_fans",
+    "temp_C",
+    "humidity_pct",
+    "C0_ppm",
+    "t_min",
+    "Ct_ppm",
+]
 
 # -----------------------------
 # Branding + page config

@@ -789,13 +789,11 @@ def page_about():
 # Sidebar navigation
 # -----------------------------
 st.sidebar.title(APP_NAME)
-page = render_branding()
+render_branding()
 
-st.sidebar.radio(
-    "Navigate",
-    ["Home", "Data", "Train Model", "Prediction Dashboard", "Reports", "About"],
-    index=0
-)
+PAGES = ["Home", "Data", "Train Model", "Prediction Dashboard", "Reports", "About"]
+page = st.sidebar.radio("Navigate", PAGES, key="nav_page")
+
 
 st.sidebar.markdown("---")
 st.sidebar.caption("Demo workflow")

@@ -780,7 +780,8 @@ def page_about():
     with cols[1]:
         st.write(
             "Navon Labs (Pty) Ltd is a Botswana-based AI and software consultancy that helps organisations transform raw data "
-            "into actionable insights by combining expertise in AI, data engineering, and software development."
+            "into actionable insights by combining expertise in AI, data engineering, and software development"
+            "with a strong focus on mining and engineering applications."
         )
         st.write("**Vision:** To be Africa’s leading AI-driven innovation lab, enabling sustainable growth and operational excellence.")
         st.markdown(

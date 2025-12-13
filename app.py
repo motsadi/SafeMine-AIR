@@ -453,7 +453,7 @@ def page_home():
         st.subheader("What this demo includes")
         st.markdown(
             """
-            - Synthetic dataset generation (CO / NOx / SO₂)
+            - Simulated dataset (CO / NOx / SO₂)
             - Model training (predicts a correction factor **alpha**)
             - Hybrid decay prediction: `C(t) = C0 * exp(-(Q/V) * alpha * t)`
             - Re-entry time estimation vs a safety threshold
@@ -472,7 +472,7 @@ def page_data():
     st.caption("Use the bundled sample dataset or upload your own CSV to run SafeMine AIR™.")
 
     st.info(
-        "This demo ships with a pre-generated synthetic dataset in **data/synthetic_gas_decay.csv** "
+        "This demo ships with a pre-generated simulated dataset in **data/synthetic_gas_decay.csv** "
         "so you can run the full workflow immediately (load → train → predict → report)."
     )
 
@@ -779,7 +779,6 @@ def page_about():
     st.markdown(
         """
 - **Location:** Palapye, Khurumela (Botswana)
-- **Phone:** +267 72476337
 - **Email:** consult@navonlabs.co.bw; ounas.saubi@gmail.com
 - **Website:** motsadi.github.io/navonlabs-site/
         """

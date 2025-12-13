@@ -482,7 +482,7 @@ def page_home():
     with col2:
         st.subheader("Quick start")
         st.code("pip install -r requirements.txt\nstreamlit run app.py", language="bash")
-        st.info("Tip: Use the sidebar to generate data, train the model, then run predictions.", icon="💡")
+        st.info("Tip: Use the sidebar to load data, train the model, then run predictions.", icon="💡")
 
 
 def page_data():

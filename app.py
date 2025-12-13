@@ -758,7 +758,7 @@ def page_about():
     cols = st.columns([0.35, 0.65], gap="large")
     with cols[0]:
         if LOGO_PATH.exists():
-            st.image(str(LOGO_PATH), use_container_width=True)
+            st.image(str(LOGO_PATH), use_column_width=True)
     with cols[1]:
         st.write(
             "Navon Labs (Pty) Ltd is a Botswana-based AI and software consultancy that helps organisations transform raw data "

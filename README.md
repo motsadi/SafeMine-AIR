@@ -4,6 +4,13 @@ SafeMine AIR™ is a prototype Streamlit application that predicts safe re-entry
 - A physics baseline (dilution / clearance using an exponential decay model)
 - A machine learning correction factor learned from historical data (simulated data from Ventsim)
 
+## What is included
+
+- A more polished visual dashboard for gas clearance forecasting
+- Ventilation sufficiency alerts based on delivered airflow versus a target re-entry window
+- Scenario testing to compare airflow, fan, duct length, and duct diameter improvements
+- Richer reporting with recommendations, scenario comparisons, PDF export, and JSON export
+
 ## Quick start (local)
 
 ```bash
@@ -18,7 +25,7 @@ streamlit run app.py
 ```
 
 ## Notes
-- This demo generates uses **simulated data from Ventsim** (no real mine data).
+- This demo uses **simulated data from Ventsim-inspired assumptions** (no real mine data).
 - The ML model learns a correction factor `alpha` such that:
 
 `C(t) = C0 * exp(-(Q/V) * alpha * t)`

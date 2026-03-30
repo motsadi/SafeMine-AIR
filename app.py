@@ -5,6 +5,7 @@ import math
 import json
 import time
 import base64
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
@@ -76,24 +77,75 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-      .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
+      .stApp {
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 28%),
+          radial-gradient(circle at top right, rgba(30, 64, 175, 0.14), transparent 24%),
+          linear-gradient(180deg, #f5f7fb 0%, #eef4f7 100%);
+      }
+      .block-container { padding-top: 1.1rem; padding-bottom: 2.2rem; }
       .safemine-hero {
-        padding: 1.0rem 1.2rem;
-        border-radius: 16px;
-        background: linear-gradient(135deg, rgba(3,102,214,0.10), rgba(76,175,80,0.10));
-        border: 1px solid rgba(0,0,0,0.06);
+        padding: 1.25rem 1.35rem;
+        border-radius: 22px;
+        background: linear-gradient(135deg, rgba(8, 47, 73, 0.96), rgba(15, 118, 110, 0.92));
+        color: #f8fafc;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
       }
       .metric-card {
-        padding: 0.9rem 1.0rem;
-        border-radius: 14px;
-        border: 1px solid rgba(0,0,0,0.06);
-        background: rgba(255,255,255,0.6);
+        padding: 1rem 1.05rem;
+        border-radius: 18px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: rgba(255,255,255,0.82);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
       }
-      .small-muted { color: rgba(0,0,0,0.55); font-size: 0.92rem; }
+      .section-card {
+        padding: 1.05rem 1.1rem;
+        border-radius: 18px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: rgba(255,255,255,0.74);
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+      }
+      .status-banner {
+        padding: 1rem 1.1rem;
+        border-radius: 18px;
+        color: #ffffff;
+        margin-bottom: 0.8rem;
+        box-shadow: 0 14px 28px rgba(15, 23, 42, 0.10);
+      }
+      .status-safe { background: linear-gradient(135deg, #047857, #10b981); }
+      .status-marginal { background: linear-gradient(135deg, #b45309, #f59e0b); }
+      .status-insufficient { background: linear-gradient(135deg, #b91c1c, #ef4444); }
+      .small-muted { color: rgba(15, 23, 42, 0.64); font-size: 0.94rem; }
+      .hero-muted { color: rgba(241, 245, 249, 0.90); font-size: 0.97rem; }
       .tag {
-        display:inline-block; padding: 0.18rem 0.55rem; border-radius: 999px;
-        border: 1px solid rgba(0,0,0,0.10); background: rgba(0,0,0,0.03);
-        font-size: 0.82rem; margin-right: 0.35rem;
+        display:inline-block; padding: 0.24rem 0.65rem; border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.20); background: rgba(255,255,255,0.12);
+        color: #f8fafc; font-size: 0.82rem; margin-right: 0.38rem; margin-top: 0.35rem;
+      }
+      .mini-stat {
+        padding: 0.8rem 0.9rem;
+        border-radius: 16px;
+        background: rgba(255,255,255,0.10);
+        border: 1px solid rgba(255,255,255,0.12);
+        min-height: 92px;
+      }
+      .mini-stat .label {
+        color: rgba(226, 232, 240, 0.84);
+        font-size: 0.83rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .mini-stat .value {
+        color: #ffffff;
+        font-size: 1.55rem;
+        font-weight: 700;
+        margin-top: 0.35rem;
+      }
+      .mini-stat .detail {
+        color: rgba(226, 232, 240, 0.88);
+        font-size: 0.84rem;
+        margin-top: 0.2rem;
       }
     </style>
     """,
@@ -341,6 +393,229 @@ def time_to_threshold(C0, Q, V, alpha, threshold_ppm):
     return max(t_sec / 60.0, 0.0)
 
 
+TARGET_CLEARANCE_MIN = 45.0
+
+
+def risk_label(t_safe_min):
+    if t_safe_min <= 30:
+        return "SAFE (Green)"
+    if t_safe_min <= 60:
+        return "CAUTION (Amber)"
+    return "HAZARDOUS (Red)"
+
+
+def risk_theme(label):
+    if label.startswith("SAFE"):
+        return {
+            "status": "status-safe",
+            "accent": "#10b981",
+            "title": "Ventilation plan is within target range.",
+        }
+    if label.startswith("CAUTION"):
+        return {
+            "status": "status-marginal",
+            "accent": "#f59e0b",
+            "title": "Conditions are workable but need close control.",
+        }
+    return {
+        "status": "status-insufficient",
+        "accent": "#ef4444",
+        "title": "Ventilation is not sufficient for the desired re-entry window.",
+    }
+
+
+def estimate_duct_efficiency(duct_length_m, duct_diameter_m):
+    length_term = np.clip(np.exp(-(max(float(duct_length_m), 1.0) - 120.0) / 500.0), 0.60, 1.15)
+    diameter_term = np.clip((max(float(duct_diameter_m), 0.1) / 0.90) ** 0.40, 0.70, 1.35)
+    return float(np.clip(length_term * diameter_term, 0.55, 1.20))
+
+
+def required_airflow_for_target(C0, V, alpha, threshold_ppm, target_min=TARGET_CLEARANCE_MIN):
+    threshold_ppm = max(float(threshold_ppm), 1e-6)
+    alpha = max(float(alpha), 1e-6)
+    if threshold_ppm >= C0:
+        return 0.0
+    t_sec = max(float(target_min), 1.0) * 60.0
+    q_needed = - (float(V) / (alpha * t_sec)) * math.log(threshold_ppm / float(C0))
+    return max(float(q_needed), 0.0)
+
+
+def assess_ventilation(inputs, alpha, t_safe_min, threshold_ppm, target_clearance_min=TARGET_CLEARANCE_MIN):
+    Q = float(inputs["Q_m3s"])
+    V = float(inputs["V_m3"])
+    duct_len = float(inputs["duct_length_m"])
+    duct_diam = float(inputs["duct_diameter_m"])
+    aux_fans = int(inputs["aux_fans"])
+    temp_c = float(inputs["temp_C"])
+    humidity = float(inputs["humidity_pct"])
+
+    duct_efficiency = estimate_duct_efficiency(duct_len, duct_diam)
+    fan_assist_factor = 1.0 + 0.08 * aux_fans
+    effective_airflow = Q * duct_efficiency * fan_assist_factor
+    air_changes_per_hour = effective_airflow * 3600.0 / max(V, 1.0)
+    required_airflow = required_airflow_for_target(
+        C0=inputs["C0_ppm"],
+        V=V,
+        alpha=alpha,
+        threshold_ppm=threshold_ppm,
+        target_min=target_clearance_min,
+    )
+    airflow_gap = required_airflow - effective_airflow
+    airflow_ratio = effective_airflow / max(required_airflow, 1e-6) if required_airflow > 0 else 1.0
+    target_gap_min = float(t_safe_min) - float(target_clearance_min)
+
+    if airflow_gap > 6.0 or target_gap_min > 15 or air_changes_per_hour < 25:
+        status = "INSUFFICIENT"
+        message = "Re-entry will likely be delayed unless ventilation delivery is improved."
+    elif airflow_gap > 1.0 or target_gap_min > 0 or air_changes_per_hour < 35:
+        status = "MARGINAL"
+        message = "Ventilation is close to acceptable, but the margin for safe clearance is narrow."
+    else:
+        status = "ADEQUATE"
+        message = "Ventilation delivery is aligned with the target re-entry window."
+
+    recommendations = []
+    if airflow_gap > 0.5:
+        recommendations.append(
+            f"Increase delivered airflow by about {max(airflow_gap, 0.0):.1f} m3/s to achieve a {target_clearance_min:.0f}-minute target."
+        )
+    if duct_len > 220:
+        recommendations.append("Shorten the active duct run or reduce leakage to improve delivery at the face.")
+    if duct_diam < 0.85:
+        recommendations.append("Consider a larger duct diameter to reduce resistance and increase usable airflow.")
+    if aux_fans < 4 and status != "ADEQUATE":
+        recommendations.append("Add or reposition an auxiliary fan closer to the face to improve mixing and clearance.")
+    if temp_c > 32 or humidity > 78:
+        recommendations.append("Increase gas-check frequency because hot or humid conditions can worsen operator exposure risk.")
+    recommendations.append("Keep re-entry locked out until field gas tests confirm concentrations are below the site threshold.")
+
+    return {
+        "status": status,
+        "message": message,
+        "duct_efficiency": float(duct_efficiency),
+        "fan_assist_factor": float(fan_assist_factor),
+        "effective_airflow_m3s": float(effective_airflow),
+        "air_changes_per_hour": float(air_changes_per_hour),
+        "required_airflow_m3s": float(required_airflow),
+        "airflow_gap_m3s": float(airflow_gap),
+        "airflow_ratio": float(airflow_ratio),
+        "target_gap_min": float(target_gap_min),
+        "recommendations": recommendations[:5],
+    }
+
+
+def predict_alpha(model, features):
+    X = pd.DataFrame([features])
+    alpha = float(model.predict(X)[0])
+    return float(np.clip(alpha, 0.15, 2.5))
+
+
+def build_scenario_table(model, base_inputs, threshold_ppm, baseline_t_safe):
+    scenario_specs = [
+        ("Current design", {}, "Current operating point"),
+        ("Increase airflow by 25%", {"Q_m3s": base_inputs["Q_m3s"] * 1.25}, "Boost primary fan delivery"),
+        (
+            "Add one auxiliary fan",
+            {"aux_fans": min(base_inputs["aux_fans"] + 1, 6), "Q_m3s": base_inputs["Q_m3s"] * 1.08},
+            "Improves local dilution and delivery",
+        ),
+        (
+            "Increase duct diameter by 0.15 m",
+            {"duct_diameter_m": min(base_inputs["duct_diameter_m"] + 0.15, 2.0), "Q_m3s": base_inputs["Q_m3s"] * 1.10},
+            "Reduces duct resistance",
+        ),
+        (
+            "Shorten duct by 50 m",
+            {"duct_length_m": max(base_inputs["duct_length_m"] - 50.0, 5.0), "Q_m3s": base_inputs["Q_m3s"] * 1.05},
+            "Cuts delivery losses",
+        ),
+    ]
+
+    rows = []
+    for name, overrides, note in scenario_specs:
+        scenario_inputs = dict(base_inputs)
+        scenario_inputs.update(overrides)
+        alpha = predict_alpha(model, scenario_inputs)
+        t_safe = time_to_threshold(
+            C0=scenario_inputs["C0_ppm"],
+            Q=scenario_inputs["Q_m3s"],
+            V=scenario_inputs["V_m3"],
+            alpha=alpha,
+            threshold_ppm=threshold_ppm,
+        )
+        ventilation = assess_ventilation(scenario_inputs, alpha, t_safe, threshold_ppm)
+        rows.append(
+            {
+                "Scenario": name,
+                "Predicted re-entry (min)": round(t_safe, 1),
+                "Time saved (min)": round(float(baseline_t_safe) - float(t_safe), 1),
+                "Effective airflow (m3/s)": round(ventilation["effective_airflow_m3s"], 1),
+                "Ventilation status": ventilation["status"].title(),
+                "Note": note,
+            }
+        )
+
+    df = pd.DataFrame(rows)
+    df["rank"] = df["Predicted re-entry (min)"].rank(method="dense")
+    return df.drop(columns=["rank"])
+
+
+def build_clearance_gauge(t_safe_min):
+    gauge_max = max(120, math.ceil(float(t_safe_min) / 10.0) * 10)
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number+delta",
+            value=float(t_safe_min),
+            number={"suffix": " min"},
+            delta={"reference": TARGET_CLEARANCE_MIN, "relative": False},
+            title={"text": "Predicted re-entry time"},
+            gauge={
+                "axis": {"range": [0, gauge_max]},
+                "bar": {"color": "#0f766e"},
+                "steps": [
+                    {"range": [0, 30], "color": "#d1fae5"},
+                    {"range": [30, 60], "color": "#fef3c7"},
+                    {"range": [60, gauge_max], "color": "#fee2e2"},
+                ],
+                "threshold": {"line": {"color": "#1d4ed8", "width": 3}, "thickness": 0.8, "value": TARGET_CLEARANCE_MIN},
+            },
+        )
+    )
+    fig.update_layout(height=300, margin=dict(l=10, r=10, t=60, b=10), paper_bgcolor="rgba(0,0,0,0)")
+    return fig
+
+
+def build_airflow_gap_chart(ventilation):
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=["Delivered airflow", "Required airflow"],
+            y=[ventilation["effective_airflow_m3s"], ventilation["required_airflow_m3s"]],
+            marker_color=["#0f766e", "#1d4ed8"],
+            text=[f"{ventilation['effective_airflow_m3s']:.1f}", f"{ventilation['required_airflow_m3s']:.1f}"],
+            textposition="outside",
+        )
+    )
+    fig.update_layout(
+        title="Airflow sufficiency check",
+        yaxis_title="m3/s",
+        height=300,
+        margin=dict(l=10, r=10, t=60, b=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(255,255,255,0.0)",
+    )
+    return fig
+
+
+def _pdf_draw_lines(c, x, y, lines, font="Helvetica", size=9.2, color=colors.black, leading=0.45 * cm):
+    c.setFillColor(color)
+    c.setFont(font, size)
+    for line in lines:
+        c.drawString(x, y, line)
+        y -= leading
+    return y
+
+
 # -----------------------------
 # PDF Reporting
 # -----------------------------
@@ -356,42 +631,43 @@ def generate_pdf_report(payload: dict, curve_png: bytes) -> bytes:
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
 
-    # Header
     c.setFillColor(colors.HexColor("#0B3D91"))
-    c.rect(0, h - 2.2*cm, w, 2.2*cm, fill=1, stroke=0)
+    c.rect(0, h - 2.2 * cm, w, 2.2 * cm, fill=1, stroke=0)
     c.setFillColor(colors.white)
     c.setFont("Helvetica-Bold", 16)
-    c.drawString(1.3*cm, h - 1.35*cm, "SafeMine AIR™ – Re-entry Prediction Report")
+    c.drawString(1.3 * cm, h - 1.35 * cm, "SafeMine AIR™ – Re-entry Prediction Report")
     c.setFont("Helvetica", 9)
-    c.drawString(1.3*cm, h - 1.85*cm, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    c.drawString(1.3 * cm, h - 1.85 * cm, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
-    y = h - 3.0*cm
+    ventilation = payload["ventilation"]
+    scenarios = payload["scenario_rows"]
+
+    y = h - 3.0 * cm
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(1.3*cm, y, "Summary")
-    y -= 0.6*cm
+    c.drawString(1.3 * cm, y, "Executive summary")
+    y -= 0.65 * cm
 
-    c.setFont("Helvetica", 10)
     summary_lines = [
-        f"Gas: {payload['gas']}   |   Initial concentration C0: {payload['C0_ppm']:.1f} ppm   |   Threshold: {payload['threshold_ppm']:.1f} ppm",
-        f"Airflow Q: {payload['Q_m3s']:.2f} m³/s   |   Volume V: {payload['V_m3']:.0f} m³   |   Aux fans: {payload['aux_fans']}",
-        f"Predicted correction factor (alpha): {payload['alpha']:.3f}",
-        f"Predicted safe re-entry time: {payload['t_safe_min']:.1f} minutes",
-        f"Risk classification: {payload['risk_label']}",
+        f"Gas: {payload['gas']} | C0: {payload['C0_ppm']:.1f} ppm | Threshold: {payload['threshold_ppm']:.1f} ppm",
+        f"Predicted re-entry time: {payload['t_safe_min']:.1f} minutes | Risk: {payload['risk_label']}",
+        f"Ventilation status: {ventilation['status']} | Effective airflow: {ventilation['effective_airflow_m3s']:.1f} m3/s",
+        f"Required airflow for {TARGET_CLEARANCE_MIN:.0f}-minute target: {ventilation['required_airflow_m3s']:.1f} m3/s",
+        f"Scenario airflow multiplier tested: x{payload['airflow_mult']:.2f} | Scenario re-entry: {payload['t_safe_scenario_min']:.1f} minutes",
     ]
+    wrapped_lines = []
     for line in summary_lines:
-        c.drawString(1.3*cm, y, line)
-        y -= 0.45*cm
+        wrapped_lines.extend(textwrap.wrap(line, width=96))
+    y = _pdf_draw_lines(c, 1.3 * cm, y, wrapped_lines, size=9.3)
 
-    y -= 0.2*cm
+    y -= 0.1 * cm
     c.setStrokeColor(colors.HexColor("#D0D7DE"))
-    c.line(1.3*cm, y, w-1.3*cm, y)
-    y -= 0.6*cm
+    c.line(1.3 * cm, y, w - 1.3 * cm, y)
+    y -= 0.65 * cm
 
-    # Parameter table
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(1.3*cm, y, "Inputs")
-    y -= 0.6*cm
+    c.drawString(1.3 * cm, y, "Inputs")
+    y -= 0.6 * cm
 
     table_data = [
         ["Parameter", "Value"],
@@ -406,37 +682,106 @@ def generate_pdf_report(payload: dict, curve_png: bytes) -> bytes:
         ["Temperature (°C)", f"{payload['temp_C']:.1f}"],
         ["Humidity (%)", f"{payload['humidity_pct']:.1f}"],
     ]
-    tbl = Table(table_data, colWidths=[6.0*cm, 9.0*cm])
-    tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#F6F8FA")),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.HexColor("#111827")),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,0), 10),
-        ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#D0D7DE")),
-        ("FONTSIZE", (0,1), (-1,-1), 9),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#FBFCFD")]),
-    ]))
+    tbl = Table(table_data, colWidths=[6.0 * cm, 9.0 * cm])
+    tbl.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F6F8FA")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#111827")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7DE")),
+                ("FONTSIZE", (0, 1), (-1, -1), 9),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FBFCFD")]),
+            ]
+        )
+    )
     tbl.wrapOn(c, w, h)
-    tbl_h = 0.45*cm * len(table_data)
-    tbl.drawOn(c, 1.3*cm, y - tbl_h + 0.2*cm)
-    y -= (tbl_h + 0.8*cm)
+    tbl_h = 0.45 * cm * len(table_data)
+    tbl.drawOn(c, 1.3 * cm, y - tbl_h + 0.2 * cm)
+    y -= tbl_h + 0.7 * cm
 
-    # Curve plot image
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(1.3*cm, y, "Predicted Gas Decay Curve")
-    y -= 0.4*cm
-    img_x = 1.3*cm
-    img_w = w - 2.6*cm
-    img_h = 8.0*cm
-    # Write png to temp buffer and draw
-    img_buf = io.BytesIO(curve_png)
-    c.drawImage(ImageReader(img_buf), img_x, y - img_h, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+    c.drawString(1.3 * cm, y, "Ventilation diagnostics")
+    y -= 0.55 * cm
+    diagnostics = [
+        f"Status: {ventilation['status']}",
+        f"Message: {ventilation['message']}",
+        f"Effective airflow: {ventilation['effective_airflow_m3s']:.1f} m3/s",
+        f"Required airflow for target: {ventilation['required_airflow_m3s']:.1f} m3/s",
+        f"Airflow gap: {ventilation['airflow_gap_m3s']:.1f} m3/s",
+        f"Air changes per hour: {ventilation['air_changes_per_hour']:.1f}",
+    ]
+    wrapped_diag = []
+    for line in diagnostics:
+        wrapped_diag.extend(textwrap.wrap(line, width=96))
+    y = _pdf_draw_lines(c, 1.3 * cm, y, wrapped_diag)
 
-    # Footer
+    y -= 0.1 * cm
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(1.3 * cm, y, "Recommended actions")
+    y -= 0.55 * cm
+    reco_lines = []
+    for rec in ventilation["recommendations"][:4]:
+        reco_lines.extend(textwrap.wrap(f"- {rec}", width=96))
+    y = _pdf_draw_lines(c, 1.3 * cm, y, reco_lines)
+
+    y -= 0.1 * cm
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(1.3 * cm, y, "Improvement scenarios")
+    y -= 0.55 * cm
+    scenario_data = [["Scenario", "Re-entry", "Time saved"]]
+    for row in scenarios[:4]:
+        scenario_data.append(
+            [
+                row["Scenario"],
+                f"{row['Predicted re-entry (min)']:.1f} min",
+                f"{row['Time saved (min)']:+.1f} min",
+            ]
+        )
+    scenario_tbl = Table(scenario_data, colWidths=[8.2 * cm, 3.2 * cm, 3.4 * cm])
+    scenario_tbl.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DBEAFE")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#93C5FD")),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.8),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+            ]
+        )
+    )
+    scenario_tbl.wrapOn(c, w, h)
+    scenario_tbl.drawOn(c, 1.3 * cm, max(y - 2.7 * cm, 3.0 * cm))
+
     c.setFont("Helvetica", 8)
     c.setFillColor(colors.HexColor("#6B7280"))
-    c.drawString(1.3*cm, 1.0*cm, "Note: SafeMine AIR™ is a decision-support tool. Always follow site safety procedures and verify with approved gas testing before re-entry.")
+    c.drawString(
+        1.3 * cm,
+        1.0 * cm,
+        "Note: SafeMine AIR™ is decision support only. Follow approved site procedures and verify with gas testing before re-entry.",
+    )
+    c.showPage()
+
+    c.setFillColor(colors.HexColor("#0B3D91"))
+    c.rect(0, h - 2.0 * cm, w, 2.0 * cm, fill=1, stroke=0)
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 15)
+    c.drawString(1.3 * cm, h - 1.25 * cm, "Predicted Gas Decay Curve")
+    c.setFont("Helvetica", 9)
+    c.drawString(1.3 * cm, h - 1.7 * cm, "Baseline and what-if airflow scenario")
+
+    img_x = 1.3 * cm
+    img_y = 4.0 * cm
+    img_w = w - 2.6 * cm
+    img_h = h - 7.0 * cm
+    img_buf = io.BytesIO(curve_png)
+    c.drawImage(ImageReader(img_buf), img_x, img_y, width=img_w, height=img_h, preserveAspectRatio=True, mask="auto")
+
+    c.setFont("Helvetica", 8)
+    c.setFillColor(colors.HexColor("#6B7280"))
+    c.drawString(1.3 * cm, 1.0 * cm, "Use this chart with site ventilation standards, gas-testing logs, and shift control procedures.")
     c.showPage()
     c.save()
     buf.seek(0)
@@ -446,43 +791,68 @@ def generate_pdf_report(payload: dict, curve_png: bytes) -> bytes:
 from reportlab.lib.utils import ImageReader
 
 
-# -----------------------------
-# App pages
-# -----------------------------
-def risk_label(t_safe_min):
-    if t_safe_min <= 30:
-        return "SAFE (Green)"
-    if t_safe_min <= 60:
-        return "CAUTION (Amber)"
-    return "HAZARDOUS (Red)"
-
 def page_home():
-    st.markdown(f"<div class='safemine-hero'><h2>🛡️ {APP_NAME}</h2>"
-                f"<p class='small-muted'>{SYSTEM_OVERVIEW}</p>"
-                f"<span class='tag'>Hybrid ML + Physics</span>"
-                f"<span class='tag'>No heavy integration</span>"
-                f"<span class='tag'>Underground re-entry decision support</span>"
-                f"</div>", unsafe_allow_html=True)
+    df = ensure_dataset()
+    model, meta = load_model()
+    model_status = meta["model_name"] if meta else "Not yet trained"
+    st.markdown(
+        f"""
+        <div class='safemine-hero'>
+          <h2 style='margin-bottom:0.35rem;'>🛡️ {APP_NAME}</h2>
+          <p class='hero-muted'>{SYSTEM_OVERVIEW}</p>
+          <div style='display:flex; gap:0.9rem; margin:1rem 0 0.6rem 0; flex-wrap:wrap;'>
+            <div class='mini-stat'>
+              <div class='label'>Sample events</div>
+              <div class='value'>{df['event_id'].nunique():,}</div>
+              <div class='detail'>Synthetic blast records available to train and test predictions.</div>
+            </div>
+            <div class='mini-stat'>
+              <div class='label'>Model status</div>
+              <div class='value'>{model_status}</div>
+              <div class='detail'>Train once, then use the dashboard to compare baseline vs improved ventilation plans.</div>
+            </div>
+            <div class='mini-stat'>
+              <div class='label'>Target clearance</div>
+              <div class='value'>{TARGET_CLEARANCE_MIN:.0f} min</div>
+              <div class='detail'>The app flags insufficient ventilation when the predicted plan misses this operational target.</div>
+            </div>
+          </div>
+          <span class='tag'>Hybrid ML + Physics</span>
+          <span class='tag'>Ventilation alerts</span>
+          <span class='tag'>Scenario-based reporting</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.write("")
     col1, col2 = st.columns([1.15, 1.0], gap="large")
     with col1:
-        st.subheader("Problem Summary")
+        st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+        st.subheader("Why this matters")
         st.write(PROBLEM_SUMMARY)
-        st.subheader("What this demo includes")
         st.markdown(
             """
-            - Simulated dataset (CO / NOx / SO₂)
-            - Model training (predicts a correction factor **alpha**)
-            - Hybrid decay prediction: `C(t) = C0 * exp(-(Q/V) * alpha * t)`
-            - Re-entry time estimation vs a safety threshold
-            - Scenario testing (fan airflow adjustments)
-            - Professional PDF report generation
+            - Replace fixed waiting periods with a forecast tied to gas concentration, airflow, and ventilation geometry.
+            - Detect when the current layout is unlikely to clear fumes in the target window.
+            - Turn every prediction into an operational report with recommended ventilation actions.
             """
         )
+        st.markdown("</div>", unsafe_allow_html=True)
     with col2:
+        st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+        st.subheader("What is new in this version")
+        st.markdown(
+            """
+            - A more visual prediction dashboard with clearer status cards and gauges.
+            - Ventilation sufficiency diagnostics showing delivered airflow, required airflow, and the gap.
+            - Improvement scenarios to show likely time savings before crews re-enter.
+            - Richer reports with actions, scenario comparisons, and executive-ready summaries.
+            """
+        )
         st.subheader("Quick start")
         st.code("pip install -r requirements.txt\nstreamlit run app.py", language="bash")
         st.info("Tip: Use the sidebar to load data, train the model, then run predictions.", icon="💡")
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def page_data():
@@ -618,7 +988,7 @@ def page_dashboard():
 
     with right:
         if run:
-            X = pd.DataFrame([{
+            base_inputs = {
                 "gas": gas,
                 "Q_m3s": Q,
                 "V_m3": V,
@@ -628,24 +998,37 @@ def page_dashboard():
                 "temp_C": temp_c,
                 "humidity_pct": humidity,
                 "C0_ppm": C0,
-            }])
+            }
 
-            alpha = float(model.predict(X)[0])
-            alpha = float(np.clip(alpha, 0.15, 2.5))
+            alpha = predict_alpha(model, base_inputs)
 
-            # baseline
             t_grid = np.linspace(0, horizon, 241)
             Ct = hybrid_decay_curve(C0=C0, Q=Q, V=V, alpha=alpha, t_minutes=t_grid)
             t_safe = time_to_threshold(C0=C0, Q=Q, V=V, alpha=alpha, threshold_ppm=threshold)
             label = risk_label(t_safe)
+            theme = risk_theme(label)
+            ventilation = assess_ventilation(base_inputs, alpha, t_safe, threshold)
 
-            # scenario airflow
             Q2 = Q * float(airflow_mult)
             Ct2 = hybrid_decay_curve(C0=C0, Q=Q2, V=V, alpha=alpha, t_minutes=t_grid)
             t_safe2 = time_to_threshold(C0=C0, Q=Q2, V=V, alpha=alpha, threshold_ppm=threshold)
+            scenarios = build_scenario_table(model, base_inputs, threshold, t_safe)
+            best_row = scenarios.sort_values("Predicted re-entry (min)").iloc[0].to_dict()
 
-            # Metrics row
-            m1, m2, m3 = st.columns(3, gap="medium")
+            st.markdown(
+                f"""
+                <div class="status-banner {theme['status']}">
+                  <div style="font-size:1.05rem; font-weight:700; margin-bottom:0.25rem;">{theme['title']}</div>
+                  <div style="font-size:0.94rem;">
+                    {ventilation['message']} Current predicted re-entry is <strong>{t_safe:.1f} minutes</strong>,
+                    compared with the operational target of <strong>{TARGET_CLEARANCE_MIN:.0f} minutes</strong>.
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            m1, m2, m3, m4 = st.columns(4, gap="medium")
             with m1:
                 st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
                 st.metric("Predicted re-entry time", f"{t_safe:.1f} min")
@@ -658,21 +1041,30 @@ def page_dashboard():
                 st.markdown("</div>", unsafe_allow_html=True)
             with m3:
                 st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
-                st.metric(f"Re-entry time (airflow ×{airflow_mult:.2f})", f"{t_safe2:.1f} min")
+                st.metric("Effective airflow", f"{ventilation['effective_airflow_m3s']:.1f} m3/s")
+                st.caption(f"Gap vs target: {ventilation['airflow_gap_m3s']:+.1f} m3/s")
+                st.markdown("</div>", unsafe_allow_html=True)
+            with m4:
+                st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+                st.metric(f"Re-entry time (airflow x{airflow_mult:.2f})", f"{t_safe2:.1f} min")
                 delta = t_safe2 - t_safe
                 st.caption(f"Change vs baseline: {delta:+.1f} min")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            # Plotly chart
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=t_grid, y=Ct, mode="lines", name="Predicted (baseline Q)"))
-            fig.add_trace(go.Scatter(x=t_grid, y=Ct2, mode="lines", name=f"Scenario (Q×{airflow_mult:.2f})", line=dict(dash="dash")))
+            fig.add_trace(go.Scatter(x=t_grid, y=Ct, mode="lines", name="Predicted (baseline Q)", line=dict(color="#0f766e", width=4)))
+            fig.add_trace(
+                go.Scatter(
+                    x=t_grid,
+                    y=Ct2,
+                    mode="lines",
+                    name=f"Scenario (Qx{airflow_mult:.2f})",
+                    line=dict(color="#1d4ed8", width=3, dash="dash"),
+                )
+            )
             fig.add_hline(y=threshold, line_dash="dot", annotation_text=f"Threshold ({threshold} ppm)", annotation_position="top left")
-
-            # Mark safe times
             fig.add_vline(x=t_safe, line_dash="dot", annotation_text="Re-entry (baseline)", annotation_position="top right")
             fig.add_vline(x=t_safe2, line_dash="dot", annotation_text="Re-entry (scenario)", annotation_position="bottom right")
-
             fig.update_layout(
                 title="Predicted Gas Concentration Decay",
                 xaxis_title="Time after blast (minutes)",
@@ -680,10 +1072,44 @@ def page_dashboard():
                 height=520,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
                 margin=dict(l=20, r=20, t=60, b=20),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(255,255,255,0.86)",
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            # Store in session for reports
+            c1, c2 = st.columns([0.95, 1.05], gap="large")
+            with c1:
+                st.plotly_chart(build_clearance_gauge(t_safe), use_container_width=True)
+            with c2:
+                st.plotly_chart(build_airflow_gap_chart(ventilation), use_container_width=True)
+
+            st.subheader("Ventilation diagnosis")
+            d1, d2 = st.columns([1.1, 0.9], gap="large")
+            with d1:
+                st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+                st.markdown(
+                    f"""
+                    - **Status:** {ventilation['status']}
+                    - **Air changes per hour:** {ventilation['air_changes_per_hour']:.1f}
+                    - **Duct efficiency factor:** {ventilation['duct_efficiency']:.2f}
+                    - **Required airflow for target:** {ventilation['required_airflow_m3s']:.1f} m3/s
+                    - **Best tested scenario:** {best_row['Scenario']} ({best_row['Predicted re-entry (min)']:.1f} min)
+                    """
+                )
+                st.markdown("**Recommended actions**")
+                for rec in ventilation["recommendations"]:
+                    st.write(f"- {rec}")
+                st.markdown("</div>", unsafe_allow_html=True)
+            with d2:
+                st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+                st.subheader("Improvement scenarios")
+                st.dataframe(
+                    scenarios[["Scenario", "Predicted re-entry (min)", "Time saved (min)", "Ventilation status"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+
             st.session_state["last_prediction"] = {
                 "gas": gas, "C0_ppm": float(C0), "threshold_ppm": float(threshold),
                 "Q_m3s": float(Q), "V_m3": float(V),
@@ -691,52 +1117,86 @@ def page_dashboard():
                 "aux_fans": int(aux_fans), "temp_C": float(temp_c), "humidity_pct": float(humidity),
                 "alpha": float(alpha), "t_safe_min": float(t_safe), "risk_label": label,
                 "airflow_mult": float(airflow_mult), "t_safe_scenario_min": float(t_safe2),
+                "ventilation": ventilation,
+                "scenario_rows": scenarios.to_dict(orient="records"),
+                "horizon": float(horizon),
             }
+            st.session_state["last_horizon"] = float(horizon)
         else:
             st.info("Fill inputs and click **Run prediction** to view results.", icon="📌")
 
 def page_reports():
     st.header("🧾 Reports")
-    st.caption("Generate a professional PDF report from the latest dashboard prediction.")
+    st.caption("Generate a richer operations report from the latest dashboard prediction.")
     pred = st.session_state.get("last_prediction")
 
     if not pred:
         st.warning("No prediction found yet. Run a prediction in **Prediction Dashboard** first.")
         return
 
-    col1, col2 = st.columns([1.0, 1.0], gap="large")
+    ventilation = pred["ventilation"]
+    scenarios = pd.DataFrame(pred["scenario_rows"])
+    theme = risk_theme(pred["risk_label"])
+
+    st.markdown(
+        f"""
+        <div class="status-banner {theme['status']}">
+          <div style="font-size:1.05rem; font-weight:700; margin-bottom:0.25rem;">Reporting summary</div>
+          <div style="font-size:0.94rem;">
+            Latest prediction: <strong>{pred['t_safe_min']:.1f} minutes</strong> for {pred['gas']},
+            with ventilation status <strong>{ventilation['status']}</strong>.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col1, col2 = st.columns([0.95, 1.05], gap="large")
     with col1:
-        st.subheader("Report content")
-        st.write("This PDF includes:")
+        st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+        st.subheader("Executive summary")
         st.markdown(
             """
-            - Summary of inputs and predicted re-entry time  
-            - Safety classification (green / amber / red)  
-            - Predicted gas decay curve plot  
-            - Notes about decision-support use  
+            - Executive summary of risk, re-entry forecast, and ventilation adequacy.
+            - Airflow sufficiency gap against the target clearance window.
+            - Improvement scenarios to show which changes save the most time.
+            - Action recommendations ready for supervisors or shift reports.
             """
         )
-        st.json({k: pred[k] for k in ["gas","C0_ppm","threshold_ppm","Q_m3s","V_m3","alpha","t_safe_min","risk_label"]})
+        st.json(
+            {
+                "gas": pred["gas"],
+                "predicted_re_entry_min": round(pred["t_safe_min"], 1),
+                "risk_label": pred["risk_label"],
+                "ventilation_status": ventilation["status"],
+                "effective_airflow_m3s": round(ventilation["effective_airflow_m3s"], 1),
+                "required_airflow_m3s": round(ventilation["required_airflow_m3s"], 1),
+            }
+        )
+        st.markdown("**Recommended actions**")
+        for rec in ventilation["recommendations"]:
+            st.write(f"- {rec}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with col2:
-        # create a matplotlib version of the curve for embedding
-        t_grid = np.linspace(0,  pred.get("horizon", 120), 241)
-        # Use the last used horizon if present; else 120
-        horizon = st.session_state.get("last_horizon", 120)
+        horizon = pred.get("horizon", st.session_state.get("last_horizon", 120))
         t_grid = np.linspace(0, horizon, 241)
         Ct = hybrid_decay_curve(pred["C0_ppm"], pred["Q_m3s"], pred["V_m3"], pred["alpha"], t_grid)
+        Q2 = pred["Q_m3s"] * pred["airflow_mult"]
+        Ct2 = hybrid_decay_curve(pred["C0_ppm"], Q2, pred["V_m3"], pred["alpha"], t_grid)
 
         fig, ax = plt.subplots(figsize=(8.5, 3.6))
-        ax.plot(t_grid, Ct)
-        ax.axhline(pred["threshold_ppm"], linestyle="--")
-        ax.axvline(pred["t_safe_min"], linestyle=":")
+        ax.plot(t_grid, Ct, linewidth=2.6, color="#0f766e", label="Baseline")
+        ax.plot(t_grid, Ct2, linewidth=2.0, linestyle="--", color="#1d4ed8", label=f"Scenario x{pred['airflow_mult']:.2f}")
+        ax.axhline(pred["threshold_ppm"], linestyle="--", color="#475569")
+        ax.axvline(pred["t_safe_min"], linestyle=":", color="#ef4444")
         ax.set_xlabel("Time after blast (minutes)")
         ax.set_ylabel("Concentration (ppm)")
         ax.set_title("Predicted Gas Decay Curve")
+        ax.legend()
         curve_png = _fig_to_png_bytes(fig)
 
         if st.button("Generate PDF report", type="primary"):
-            # update with horizon in payload
             payload = dict(pred)
             payload["horizon"] = float(horizon)
             pdf_bytes = generate_pdf_report(payload, curve_png)
@@ -748,8 +1208,23 @@ def page_reports():
                 mime="application/pdf",
             )
 
+        json_bytes = json.dumps(pred, indent=2).encode("utf-8")
+        st.download_button(
+            label="Download JSON summary",
+            data=json_bytes,
+            file_name=f"safemine_air_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+            mime="application/json",
+        )
+
         st.subheader("Preview (plot used in report)")
         st.image(curve_png, use_column_width=True)
+
+    st.subheader("Scenario comparison")
+    st.dataframe(
+        scenarios[["Scenario", "Predicted re-entry (min)", "Time saved (min)", "Effective airflow (m3/s)", "Ventilation status", "Note"]],
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 def page_about():

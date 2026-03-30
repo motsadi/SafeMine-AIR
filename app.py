@@ -798,8 +798,8 @@ def page_about():
     st.markdown(
         """
 - **Location:** Palapye, Khurumela (Botswana)
-- **Email:** consult@navonlabs.co.bw; ounas.saubi@gmail.com
-- **Website:** motsadi.github.io/navonlabs-site/
+- **Email:** consult@navonlab.com; ounas.saubi@gmail.com
+- **Website:** www.navonlab.com
         """
     )
 
